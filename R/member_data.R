@@ -71,6 +71,44 @@ validate_member_data <- function(member_data,
                                 \(x) transformers[[dplyr::cur_column()]](x)))
 }
 
+data_spec_add_tranches <- function(data_spec, validators = list(), transformers = list()) {
+  data_spec$validators <- append(data_spec$validators, validators)
+  data_spec$transformers <- append(data_spec$transformers, transformers)
+  data_spec
+}
+
+data_spec <- list(
+  validators = list(
+    identifier = \(x) { length(x) == length(unique(x)) },
+    payment_status = \(x) { all(x %in% c("IN PMT", "DEATH", "EXIT")) },
+    member_status = \(x) { all(x %in% c("DEF", "PEN", "SPS")) },
+    gender = \(x) { all(x %in% c("M", "F")) },
+    dob = all_is_date,
+    date_benefit_commenced = all_is_date,
+    date_left_scheme = all_is_date,
+    date_of_retirement = all_is_date,
+    date_of_exit = all_is_date,
+    pension_total_l1 = validate_pension,
+    pension_total_l2 = validate_pension
+  ),
+  transformers = list(
+    identifier = as.character,
+    payment_status = \(x) { factor(x, levels = c("IN PMT", "DEATH", "EXIT")) },
+    member_status = \(x) { factor(x, levels = c("DEF", "PEN", "SPS")) },
+    gender = \(x) { factor(x, levels = c("M", "F")) },
+    dob = as.Date,
+    date_benefit_commenced = as.Date,
+    date_left_scheme = as.Date,
+    date_of_retirement = as.Date,
+    date_of_exit = as.Date,
+    pension_total_l1 = as.numeric,
+    pension_total_l2 = as.numeric
+  )
+)
+
+data_spec_add_tranches(data_spec,
+                       validators = list(pension_tranche_t1_l1 = is.numeric),
+                       transformers = list(pension_tranche_t1_l1 = as.numeric))
 
 member_data <- new_member_data()
 validate_member_data(member_data)
