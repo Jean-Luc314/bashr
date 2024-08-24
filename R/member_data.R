@@ -17,37 +17,70 @@ new_member_data <- function(
   df
 }
 
-is_date_all <- function(dte) all(lubridate::is.Date(dte))
+all_is_date <- function(dte) all(lubridate::is.Date(dte))
 validate_pension <- function(x) all(x >= 0 | is.na(x))
 
 validate_member_data <- function(member_data,
                                  data_spec = list(
-                                   identifier = \(x) { length(x) == length(unique(x)) },
-                                   payment_status = \(x) { all(x %in% c("IN PMT", "DEATH", "EXIT")) },
-                                   member_status = \(x) { all(x %in% c("DEF", "PEN", "SPS")) },
-                                   gender = \(x) { all(x %in% c("M", "F")) },
-                                   dob = is_date_all,
-                                   date_benefit_commenced = is_date_all,
-                                   date_left_scheme = is_date_all,
-                                   date_of_retirement = is_date_all,
-                                   date_of_exit = is_date_all,
-                                   pension_total_l1 = validate_pension,
-                                   pension_total_l2 = validate_pension
+                                   validators = list(
+                                     identifier = \(x) { length(x) == length(unique(x)) },
+                                     payment_status = \(x) { all(x %in% c("IN PMT", "DEATH", "EXIT")) },
+                                     member_status = \(x) { all(x %in% c("DEF", "PEN", "SPS")) },
+                                     gender = \(x) { all(x %in% c("M", "F")) },
+                                     dob = all_is_date,
+                                     date_benefit_commenced = all_is_date,
+                                     date_left_scheme = all_is_date,
+                                     date_of_retirement = all_is_date,
+                                     date_of_exit = all_is_date,
+                                     pension_total_l1 = validate_pension,
+                                     pension_total_l2 = validate_pension
+                                   ),
+                                   transformers = list(
+                                     identifier = as.character,
+                                     payment_status = \(x) { factor(x, levels = c("IN PMT", "DEATH", "EXIT")) },
+                                     member_status = \(x) { factor(x, levels = c("DEF", "PEN", "SPS")) },
+                                     gender = \(x) { factor(x, levels = c("M", "F")) },
+                                     dob = as.Date,
+                                     date_benefit_commenced = as.Date,
+                                     date_left_scheme = as.Date,
+                                     date_of_retirement = as.Date,
+                                     date_of_exit = as.Date,
+                                     pension_total_l1 = as.numeric,
+                                     pension_total_l2 = as.numeric
+                                   )
                                  )) {
+  validators <- data_spec$validators
+  validation_fields <- names(validators)
+  transformers <- data_spec$transformers
+  transform_fields <- names(transformers)
+  
   # Check Missing Fields
-  missing_fields <- names(data_spec)[! names(data_spec) %in% names(member_data)]
+  missing_fields <- validation_fields[! validation_fields %in% names(member_data)]
   if (length(missing_fields) > 0) stop("member_data is missing fields: ", paste(missing_fields, collapse = ", "), call. = FALSE)
   
   # Check Validations Pass
-  pass_validations <- member_data |> dplyr::summarise(dplyr::across(names(data_spec), \(x) data_spec[[dplyr::cur_column()]](x)))
-  failed_validations <- pass_validations |> dplyr::select(tidyselect::where(`!`)) |> names()
-  if (!all(pass_validations)) stop("member_data failed validations: ", paste(failed_validations, collapse = ", "), call. = FALSE)
+  failed_validations <- member_data |>
+    dplyr::summarise(dplyr::across(dplyr::all_of(validation_fields),
+                                   \(x) validators[[dplyr::cur_column()]](x))) |>
+    dplyr::select(tidyselect::where(`!`)) |>
+    names()
+  if (length(failed_validations) > 0) stop("member_data failed validations: ", paste(failed_validations, collapse = ", "), call. = FALSE)
   
-  member_data
+  member_data |>
+    dplyr::mutate(dplyr::across(dplyr::all_of(transform_fields),
+                                \(x) transformers[[dplyr::cur_column()]](x)))
 }
 
 
 member_data <- new_member_data()
-validate_member_data(member_data = new_member_data(df = tibble::tibble(identifier = c(1, 1))),
-                     data_spec = list(identifier = \(x) length(x) == length(unique(x))))
 validate_member_data(member_data)
+validate_member_data(member_data = new_member_data(df = tibble::tibble(identifier = c(1, 2))),
+                     data_spec = list(
+                       validators = list(
+                         identifier = \(x) length(x) == length(unique(x))
+                       ),
+                       transformers = list(
+                         identifier = as.character
+                       )
+                       )
+                     )
