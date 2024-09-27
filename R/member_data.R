@@ -14,13 +14,14 @@ new_member_data <- function(
     )
 ) {
   stopifnot(tibble::is_tibble(.data))
-  class(.data) <- c("member_data", class(.data))
-  .data
+  tibble::new_tibble(.data, class = "member_data")
 }
 
-all_is_date <- function(dte) all(lubridate::is.Date(dte))
-validate_pension <- function(x) all(x >= 0 | is.na(x))
-
+# Check Missing Fields
+check_missing <- function(fields, .data, .data_name = deparse(substitute(.data))) {
+  missing_fields <- fields[! fields %in% names(.data)]
+  if (length(missing_fields) > 0) stop(.data_name, " is missing fields: ", paste(missing_fields, collapse = ", "), call. = FALSE)
+}
 
 #' Validate data
 #' 
@@ -36,47 +37,41 @@ validate_pension <- function(x) all(x >= 0 | is.na(x))
 #' `dplyr::mutate()` is called on each field in `data_spec$transformers`.
 #' 
 #' @param .data A tibble contains at least fields from `names(data_spec$validators)` and `names(data_spec$transformers)`.
-#' @param data_spec A list of `validators` and `transformers` that will operate on fields in `.data`.
+#' @param validators A named list of `validators` that will operate on fields in `.data` using `dplyr::summarise()`.
+#' @param transformers A named list of `transformers` that will operate on fields in `.data` using `dplyr::mutate()`.
 #' 
 #' `validators` and `transformers` will be a named list of functions, where the names correspond to fields within `.data`.
-#' E.g., data_spec <- list(validators = list(gender = \(x) all(x %in% c("M", "F"))), transformers = list(gender = as.character))
+#' E.g., `validators <- list(gender = \(x) all(x %in% c("M", "F")))`; `transformers <- list(gender = as.character)`
 #'
-#' @return A tibble, possibly modified using `data_spec$transformers`.
+#' @return A tibble, possibly modified using `transformers`.
 #' @export
 #'
 #' @examples
 #' .data <- tibble::tibble(identifier = c(1, 2), gender = "m")
 #' check_unique <- \(x) !any(duplicated(x))
 #' check_gender <- \(x) all(x %in% c("M", "F"))
-#' check_dob <- as.Date
+#' check_dob <- \(x) all(lubridate::is.Date(x))
 #' 
 #' # Pass
-#' validate_data(.data, list(validators = list(identifier = check_unique)))
+#' validate_data(.data, validators = list(identifier = check_unique))
 #' 
 #' # Missing dob field
-#' validate_data(.data, list(validators = list(identifier = check_unique, gender = check_gender, dob = check_dob)))
+#' validate_data(.data, validators = list(identifier = check_unique, gender = check_gender, dob = check_dob))
 #' 
 #' # Fail gender value test
-#' validate_data(.data, list(validators = list(identifier = check_unique, gender = check_gender)))
+#' validate_data(.data, validators = list(identifier = check_unique, gender = check_gender))
 #' 
 #' # Convert identifier to character
-#' validate_data(.data, list(validators = list(identifier = check_unique), transformers = list(identifier = as.character)))
-validate_data <- function(.data, data_spec) {
+#' validate_data(.data, validators = list(identifier = check_unique), transformers = list(identifier = as.character))
+validate_data <- function(.data, validators = list(), transformers = list()) {
   .data_name <- deparse(substitute(.data))
-  validators <- data_spec$validators
   validation_fields <- names(validators)
-  transformers <- data_spec$transformers
   transform_fields <- names(transformers)
   
-  # Check Missing Fields
-  check_missing <- \(fields) {
-    missing_fields <- fields[! fields %in% names(.data)]
-    if (length(missing_fields) > 0) stop(.data_name, " is missing fields: ", paste(missing_fields, collapse = ", "), call. = FALSE)
-  }
-  check_missing(validation_fields)
-  check_missing(transform_fields)
+  check_missing(validation_fields, .data, .data_name)
+  check_missing(transform_fields, .data, .data_name)
   
-  # Check Validations Pass
+  # Check validators
   failed_validations <- .data |>
     dplyr::summarise(dplyr::across(dplyr::all_of(validation_fields),
                                    \(x) validators[[dplyr::cur_column()]](x))) |>
@@ -84,6 +79,7 @@ validate_data <- function(.data, data_spec) {
     names()
   if (length(failed_validations) > 0) stop(.data_name, " failed validations: ", paste(failed_validations, collapse = ", "), call. = FALSE)
   
+  # Apply transformers
   .data |>
     dplyr::mutate(dplyr::across(dplyr::all_of(transform_fields),
                                 \(x) transformers[[dplyr::cur_column()]](x)))
@@ -95,32 +91,39 @@ expand_data_spec <- function(data_spec, validators = list(), transformers = list
   data_spec
 }
 
+check_unique <- \(x) !any(duplicated(x))
+check_payment_status <- \(x) all(x %in% c("IN PMT", "DEATH", "EXIT"))
+check_member_status <- \(x) all(x %in% c("DEF", "PEN", "SPS"))
+check_gender <- \(x) all(x %in% c("M", "F"))
+all_is_date <- function(dte) all(lubridate::is.Date(dte))
+validate_pension <- function(x) all(x >= 0 | is.na(x))
+
 data_spec <- list(
   validators = list(
-    identifier = \(x) { length(x) == length(unique(x)) },
-    payment_status = \(x) { all(x %in% c("IN PMT", "DEATH", "EXIT")) },
-    member_status = \(x) { all(x %in% c("DEF", "PEN", "SPS")) },
-    gender = \(x) { all(x %in% c("M", "F")) },
-    dob = all_is_date,
+    identifier             = check_unique,
+    payment_status         = check_payment_status,
+    member_status          = check_member_status,
+    gender                 = check_gender,
+    dob                    = all_is_date,
     date_benefit_commenced = all_is_date,
-    date_left_scheme = all_is_date,
-    date_of_retirement = all_is_date,
-    date_of_exit = all_is_date,
-    pension_total_l1 = validate_pension,
-    pension_total_l2 = validate_pension
+    date_left_scheme       = all_is_date,
+    date_of_retirement     = all_is_date,
+    date_of_exit           = all_is_date,
+    pension_total_l1       = validate_pension,
+    pension_total_l2       = validate_pension
   ),
   transformers = list(
-    identifier = as.character,
-    payment_status = \(x) { factor(x, levels = c("IN PMT", "DEATH", "EXIT")) },
-    member_status = \(x) { factor(x, levels = c("DEF", "PEN", "SPS")) },
-    gender = \(x) { factor(x, levels = c("M", "F")) },
-    dob = as.Date,
+    identifier             = as.character,
+    payment_status         = \(x) { factor(x, levels = c("IN PMT", "DEATH", "EXIT")) },
+    member_status          = \(x) { factor(x, levels = c("DEF", "PEN", "SPS")) },
+    gender                 = \(x) { factor(x, levels = c("M", "F")) },
+    dob                    = as.Date,
     date_benefit_commenced = as.Date,
-    date_left_scheme = as.Date,
-    date_of_retirement = as.Date,
-    date_of_exit = as.Date,
-    pension_total_l1 = as.numeric,
-    pension_total_l2 = as.numeric
+    date_left_scheme       = as.Date,
+    date_of_retirement     = as.Date,
+    date_of_exit           = as.Date,
+    pension_total_l1       = as.numeric,
+    pension_total_l2       = as.numeric
   )
 )
 
@@ -129,5 +132,5 @@ expand_data_spec(data_spec,
                  transformers = list(pension_tranche_t1_l1 = as.numeric))
 
 member_data <- new_member_data()
-validate_data(member_data, data_spec)
+validate_data(member_data, data_spec$validators, data_spec$transformers)
 
