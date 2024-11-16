@@ -18,7 +18,7 @@ wrap_with_log <- function(df, log = list()) {
   env <- parent.frame()
   lazy <- TRUE
   a <- .External2(magrittr:::magrittr_pipe)
-  
+
   wrap_with_log(a, new_log)
 }
 
@@ -26,7 +26,7 @@ wrap_with_log <- function(df, log = list()) {
   lhs <- lhs_logged$df
   log <- lhs_logged$log
   new_log <- append(log, substitute(rhs))
-  
+
   wrap_with_log(magrittr::`%>%`(lhs, rhs), new_log)
 }
 
@@ -36,12 +36,12 @@ get_code <- function(df_with_log) {
     paste(collapse = " %>% ")
 }
 
-library(tidyverse)
-library(palmerpenguins)
-
-analysis <- wrap_with_log(penguins) %<$>%
-  mutate(bill_area = bill_length_mm * bill_depth_mm) %<$>%
-  group_by(species) %<$>%
-  summarise(bill_area = mean(bill_area, na.rm = TRUE))
-
-analysis %>% get_code()
+# library(tidyverse)
+# library(palmerpenguins)
+#
+# analysis <- wrap_with_log(penguins) %<$>%
+#   mutate(bill_area = bill_length_mm * bill_depth_mm) %<$>%
+#   group_by(species) %<$>%
+#   summarise(bill_area = mean(bill_area, na.rm = TRUE))
+#
+# analysis %>% get_code()
