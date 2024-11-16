@@ -34,7 +34,7 @@ run_on_sha_match <- function(package, expect_sha, code) {
   `%||%` <- function(x, y) if (is.null(x)) y else x
   wrap_quotes <- function(chr) paste0("\"", chr, "\"")
 
-  if (!is.character(package)) package <- rlang::enexpr(package) # Convert to symbol. E.g., allow `package = ggplot2`
+  package <- rlang::enexpr(package) # Convert to symbol. E.g., allow `package = ggplot2`
 
   pck_desc <- utils::packageDescription(package) # Get package meta data
   sha <- pck_desc$RemoteSha %||% "" # Extract SHA, coalesce to "" when NULL. E.g., installed from CRAN
